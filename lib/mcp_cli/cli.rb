@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "thor"
+require_relative "clients/codex"
 
 module McpCli
   class ProfileCLI < Thor
@@ -33,16 +34,57 @@ module McpCli
     end
 
     desc "integrate NAME...", "Integrate MCP server(s) with clients"
-    method_option :client, type: :string, desc: "Target client (claude|codex|goose)"
+    method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
     method_option :profile, type: :string, desc: "Profile to use"
+    method_option :command, type: :string, desc: "Command to start the MCP server"
+    method_option :env_key, type: :array, banner: "KEY [KEY ...]", desc: "Env keys passed through to the server"
     def integrate(*names)
-      puts "TODO: integrate #{names.join(', ')} for client=#{options[:client]} profile=#{options[:profile]}"
+      if names.empty?
+        say_error "No MCP names provided" and return 1
+      end
+
+      client = resolve_client(options[:client]) or return 1
+      cmd = options[:command]
+      env_keys = Array(options[:env_key]).compact
+
+      if cmd.nil? || cmd.strip.empty?
+        say_error "--command is required until registry integration is implemented"
+        return 1
+      end
+
+      successes = []
+      failures = []
+      names.each do |n|
+        begin
+          changed = client.integrate(name: n, command: cmd, env_keys: env_keys)
+          successes << [n, changed]
+        rescue => e
+          failures << [n, e.message]
+        end
+      end
+
+      successes.each do |(n, changed)|
+        say "codex: upsert #{n} (#{changed ? 'changed' : 'no-op'})"
+      end
+      failures.each do |(n, msg)|
+        say_error "codex: failed #{n}: #{msg}"
+      end
+
+      failures.empty? ? 0 : 1
     end
 
     desc "disintegrate NAME...", "Remove MCP server(s) from clients"
-    method_option :client, type: :string, desc: "Target client (claude|codex|goose)"
+    method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
     def disintegrate(*names)
-      puts "TODO: disintegrate #{names.join(', ')} for client=#{options[:client]}"
+      if names.empty?
+        say_error "No MCP names provided" and return 1
+      end
+      client = resolve_client(options[:client]) or return 1
+      names.each do |n|
+        removed = client.disintegrate(name: n)
+        say "codex: remove #{n} (#{removed ? 'removed' : 'not present'})"
+      end
+      0
     end
 
     desc "uninstall NAME...", "Uninstall MCP server(s)"
@@ -72,5 +114,20 @@ module McpCli
 
     desc "profile SUBCOMMAND ...", "Manage profiles"
     subcommand "profile", ProfileCLI
+    no_commands do
+      def resolve_client(name)
+        case (name || '').downcase
+        when 'codex'
+          McpCli::Clients::Codex.new
+        else
+          say_error "Unsupported client '#{name}'. Use --client=codex for now."
+          nil
+        end
+      end
+
+      def say_error(msg)
+        $stderr.puts "Error: #{msg}"
+      end
+    end
   end
 end
