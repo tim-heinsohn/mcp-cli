@@ -122,8 +122,6 @@ module McpCli
         installed = installed_marker(n, codex, goose, claude)
         rows << [n, installed, mark(claude.include?(n)), mark(codex.include?(n)), mark(goose.include?(n)), desc_map[n] || ""]
       end
-      say "MCPs:"
-      say ""
       print_table(rows, indent: 2)
     end
 

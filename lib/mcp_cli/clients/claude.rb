@@ -21,8 +21,15 @@ module McpCli
 
       def list
         out, _ = run_capture('claude', 'mcp', 'list')
-        # Return names heuristically: first token in each non-empty line
-        (out || '').lines.map { |l| l.strip }.reject(&:empty?).map { |l| l.split.first }
+        names = []
+        (out || '').each_line do |line|
+          line = line.strip
+          next if line.empty?
+          if (m = line.match(/^([A-Za-z0-9-]+):/))
+            names << m[1]
+          end
+        end
+        names
       end
 
       # Accepts same shape as Codex adapter for consistency
