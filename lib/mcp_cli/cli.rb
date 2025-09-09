@@ -67,7 +67,7 @@ module McpCli
               raise "No curated spec found for '#{n}' and no --command provided"
             end
           end
-          changed = client.integrate(spec)
+          changed = client.integrate(server: spec)
           successes << [n, changed]
         rescue => e
           failures << [n, e.message]
@@ -159,6 +159,8 @@ module McpCli
           McpCli::Clients::Codex.new
         when 'claude'
           McpCli::Clients::Claude.new
+        when 'goose'
+          McpCli::Clients::Goose.new
         else
           say_error "Unsupported client '#{name}'. Use --client=codex for now."
           nil
