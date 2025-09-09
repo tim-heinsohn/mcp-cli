@@ -3,6 +3,8 @@
 require "thor"
 require_relative "clients/codex"
 require_relative "clients/claude"
+require_relative "registry/resolver"
+require_relative "registry/sources/curated"
 
 module McpCli
   class ProfileCLI < Thor
@@ -47,17 +49,24 @@ module McpCli
       client = resolve_client(options[:client]) or return 1
       cmd = options[:command]
       env_keys = Array(options[:env_key]).compact
-
-      if cmd.nil? || cmd.strip.empty?
-        say_error "--command is required until registry integration is implemented"
-        return 1
-      end
+      resolver = McpCli::Registry::Resolver.new(sources: [McpCli::Registry::Sources::Curated.new])
 
       successes = []
       failures = []
       names.each do |n|
         begin
-          changed = client.integrate(name: n, command: cmd, env_keys: env_keys)
+          spec = nil
+          if cmd && !cmd.strip.empty?
+            spec = { name: n, command: cmd, env_keys: env_keys }
+          else
+            model = resolver.resolve(n)
+            if model
+              spec = curated_spec_for(model, options[:client], extra_env: env_keys)
+            else
+              raise "No curated spec found for '#{n}' and no --command provided"
+            end
+          end
+          changed = client.integrate(spec)
           successes << [n, changed]
         rescue => e
           failures << [n, e.message]
@@ -130,6 +139,15 @@ module McpCli
 
       def say_error(msg)
         $stderr.puts "Error: #{msg}"
+      end
+
+      def curated_spec_for(model, client_name, extra_env: [])
+        clients = model.metadata.fetch('clients', {})
+        client_cfg = clients[(client_name || '').downcase] || clients[(client_name || '').capitalize]
+        raise "Curated spec missing for client '#{client_name}'" unless client_cfg
+        cmd = client_cfg['command'] || client_cfg[:command]
+        envs = Array(client_cfg['env_keys'] || client_cfg[:env_keys]) | Array(extra_env)
+        { name: model.name, command: cmd, env_keys: envs }
       end
     end
   end

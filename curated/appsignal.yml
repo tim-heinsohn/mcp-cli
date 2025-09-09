@@ -1,0 +1,9 @@
+name: appsignal
+description: AppSignal application monitoring and performance metrics MCP
+clients:
+  codex:
+    command: docker run -i --rm -e APPSIGNAL_API_KEY appsignal/mcp
+    env_keys: ["APPSIGNAL_API_KEY"]
+  claude:
+    command: docker run -i --rm -e APPSIGNAL_API_KEY appsignal/mcp
+    env_keys: ["APPSIGNAL_API_KEY"]
