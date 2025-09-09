@@ -7,3 +7,6 @@ clients:
   claude:
     command: docker run -i --rm -e APPSIGNAL_API_KEY appsignal/mcp
     env_keys: ["APPSIGNAL_API_KEY"]
+  goose:
+    command: docker run -i --rm -e APPSIGNAL_API_KEY appsignal/mcp
+    env_keys: ["APPSIGNAL_API_KEY"]
