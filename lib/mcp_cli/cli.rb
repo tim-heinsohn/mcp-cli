@@ -3,6 +3,7 @@
 require "thor"
 require_relative "clients/codex"
 require_relative "clients/claude"
+require_relative "clients/goose"
 require_relative "registry/resolver"
 require_relative "registry/sources/curated"
 
@@ -104,7 +105,34 @@ module McpCli
 
     desc "list", "List available MCP servers"
     def list
-      puts "TODO: list registry entries"
+      resolver = McpCli::Registry::Resolver.new(sources: [McpCli::Registry::Sources::Curated.new])
+      curated = resolver.list
+
+      codex = begin
+        McpCli::Clients::Codex.new.list
+      rescue => _
+        []
+      end
+      goose = begin
+        McpCli::Clients::Goose.new.list
+      rescue => _
+        []
+      end
+      claude = begin
+        McpCli::Clients::Claude.new.list
+      rescue => _
+        []
+      end
+
+      names = (curated + codex + goose + claude).uniq.sort
+      names.each do |n|
+        tags = []
+        tags << 'curated' if curated.include?(n)
+        tags << 'codex' if codex.include?(n)
+        tags << 'goose' if goose.include?(n)
+        tags << 'claude' if claude.include?(n)
+        say sprintf("%-20s %s", n, tags.join(', '))
+      end
     end
 
     desc "info NAME", "Show MCP info"
