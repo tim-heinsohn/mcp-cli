@@ -1,5 +1,5 @@
 name: appsignal
-description: AppSignal application monitoring and performance metrics MCP
+description: apm, metrics
 clients:
   codex:
     command: docker run -i --rm -e APPSIGNAL_API_KEY appsignal/mcp

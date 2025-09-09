@@ -105,34 +105,26 @@ module McpCli
 
     desc "list", "List available MCP servers"
     def list
-      resolver = McpCli::Registry::Resolver.new(sources: [McpCli::Registry::Sources::Curated.new])
-      curated = resolver.list
+      curated_source = McpCli::Registry::Sources::Curated.new
+      curated_models = curated_source.models
+      curated_names = curated_models.map(&:name)
+      desc_map = curated_models.each_with_object({}) { |m, h| h[m.name] = m.description.to_s }
 
-      codex = begin
-        McpCli::Clients::Codex.new.list
-      rescue => _
-        []
-      end
-      goose = begin
-        McpCli::Clients::Goose.new.list
-      rescue => _
-        []
-      end
-      claude = begin
-        McpCli::Clients::Claude.new.list
-      rescue => _
-        []
-      end
+      codex = safe_list { McpCli::Clients::Codex.new.list }
+      goose = safe_list { McpCli::Clients::Goose.new.list }
+      claude = safe_list { McpCli::Clients::Claude.new.list }
 
-      names = (curated + codex + goose + claude).uniq.sort
+      names = (curated_names + codex + goose + claude).uniq.sort
+
+      rows = []
+      rows << ["MCP", "Installed", "Claude", "Codex", "Goose", "Description"]
       names.each do |n|
-        tags = []
-        tags << 'curated' if curated.include?(n)
-        tags << 'codex' if codex.include?(n)
-        tags << 'goose' if goose.include?(n)
-        tags << 'claude' if claude.include?(n)
-        say sprintf("%-20s %s", n, tags.join(', '))
+        installed = installed_marker(n, codex, goose, claude)
+        rows << [n, installed, mark(claude.include?(n)), mark(codex.include?(n)), mark(goose.include?(n)), desc_map[n] || ""]
       end
+      say "MCPs:"
+      say ""
+      print_table(rows, indent: 2)
     end
 
     desc "info NAME", "Show MCP info"
@@ -178,6 +170,21 @@ module McpCli
         cmd = client_cfg['command'] || client_cfg[:command]
         envs = Array(client_cfg['env_keys'] || client_cfg[:env_keys]) | Array(extra_env)
         { name: model.name, command: cmd, env_keys: envs }
+      end
+
+      def mark(bool)
+        bool ? 'x' : '—'
+      end
+
+      def installed_marker(name, codex, goose, claude)
+        dir = File.expand_path("~/.#{name}-mcp")
+        mark(Dir.exist?(dir) || codex.include?(name) || goose.include?(name) || claude.include?(name))
+      end
+
+      def safe_list
+        yield
+      rescue StandardError
+        []
       end
     end
   end

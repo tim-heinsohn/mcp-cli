@@ -30,6 +30,11 @@ module McpCli
           load_all.select { |m| m.name.downcase.include?(q) || (m.description || '').downcase.include?(q) }
         end
 
+        # Expose loaded models for consumers that need descriptions/metadata.
+        def models
+          load_all.dup
+        end
+
         private
 
         def load_all
