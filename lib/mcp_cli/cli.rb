@@ -2,6 +2,7 @@
 
 require "thor"
 require_relative "clients/codex"
+require_relative "clients/claude"
 
 module McpCli
   class ProfileCLI < Thor
@@ -64,10 +65,10 @@ module McpCli
       end
 
       successes.each do |(n, changed)|
-        say "codex: upsert #{n} (#{changed ? 'changed' : 'no-op'})"
+        say "#{options[:client]}: upsert #{n} (#{changed ? 'changed' : 'no-op'})"
       end
       failures.each do |(n, msg)|
-        say_error "codex: failed #{n}: #{msg}"
+        say_error "#{options[:client]}: failed #{n}: #{msg}"
       end
 
       failures.empty? ? 0 : 1
@@ -82,7 +83,7 @@ module McpCli
       client = resolve_client(options[:client]) or return 1
       names.each do |n|
         removed = client.disintegrate(name: n)
-        say "codex: remove #{n} (#{removed ? 'removed' : 'not present'})"
+        say "#{options[:client]}: remove #{n} (#{removed ? 'removed' : 'not present'})"
       end
       0
     end
@@ -119,6 +120,8 @@ module McpCli
         case (name || '').downcase
         when 'codex'
           McpCli::Clients::Codex.new
+        when 'claude'
+          McpCli::Clients::Claude.new
         else
           say_error "Unsupported client '#{name}'. Use --client=codex for now."
           nil
