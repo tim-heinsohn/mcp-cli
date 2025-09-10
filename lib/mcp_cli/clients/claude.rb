@@ -23,7 +23,7 @@ module McpCli
       # to Claude CLI; otherwise list across both scopes.
       def list(scope: nil)
         args = ['claude', 'mcp', 'list']
-        args << "--scope=#{scope}" if scope
+        args += ['--scope', scope] if scope
         out, _ = run_capture(*args)
         parse_list(out)
       end
@@ -80,7 +80,14 @@ module McpCli
                         name
                       end
         raise ArgumentError, 'name is required' if blank?(server_name)
-        system('claude', 'mcp', 'remove', server_name)
+        cmd = ['claude', 'mcp', 'remove', server_name]
+        cmd += ['--scope', @scope] if @scope
+        out, err, st = Open3.capture3(*cmd)
+        text = [out, err].compact.join("\n")
+        # Claude prints a success line like: "Removed MCP server \"name\" from ..."
+        # and an error like: "No user-scoped MCP server found with name: name"
+        removed = text.include?('Removed MCP server')
+        removed
       end
 
       private
