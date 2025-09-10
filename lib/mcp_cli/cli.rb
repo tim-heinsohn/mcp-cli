@@ -37,7 +37,7 @@ module McpCli
       puts "TODO: update #{names.join(', ')} (all if none)"
     end
 
-    desc "integrate NAME...", "Integrate MCP server(s) with clients"
+    desc "integrate NAME...", "Integrate MCP server(s) with clients (scope flags affect Claude only; Codex/Goose are global-only)"
     method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
     method_option :profile, type: :string, desc: "Profile to use"
     method_option :command, type: :string, desc: "Command to start the MCP server"
@@ -90,7 +90,7 @@ module McpCli
       failures.empty? ? 0 : 1
     end
 
-    desc "disintegrate NAME...", "Remove MCP server(s) from clients"
+    desc "disintegrate NAME...", "Remove MCP server(s) from clients (scope flags affect Claude only; Codex/Goose are global-only)"
     method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
     method_option :global, type: :boolean, aliases: ['-g'], desc: "Claude: remove from global (user) scope (default)"
     method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Claude: remove from workspace scope (current dir)"
@@ -115,7 +115,7 @@ module McpCli
       puts "TODO: uninstall #{names.join(', ')}"
     end
 
-    desc "list", "List available MCP servers"
+    desc "list", "List available MCP servers (use -g/-w to filter Claude scope; Codex/Goose are global-only)"
     method_option :global, type: :boolean, aliases: ['-g'], desc: "Show only global (user) Claude scope"
     method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Show only workspace Claude scope (current dir)"
     def list
