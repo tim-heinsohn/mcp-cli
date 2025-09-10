@@ -42,12 +42,16 @@ module McpCli
     method_option :profile, type: :string, desc: "Profile to use"
     method_option :command, type: :string, desc: "Command to start the MCP server"
     method_option :env_key, type: :array, banner: "KEY [KEY ...]", desc: "Env keys passed through to the server"
+    method_option :scope, type: :string, desc: "Claude scope (user|workspace)"
     def integrate(*names)
       if names.empty?
         say_error "No MCP names provided" and return 1
       end
 
       client = resolve_client(options[:client]) or return 1
+      if options[:client].to_s.downcase == 'claude' && options[:scope]
+        client = McpCli::Clients::Claude.new(scope: options[:scope])
+      end
       cmd = options[:command]
       env_keys = Array(options[:env_key]).compact
       resolver = McpCli::Registry::Resolver.new(sources: [McpCli::Registry::Sources::Curated.new])
@@ -86,11 +90,15 @@ module McpCli
 
     desc "disintegrate NAME...", "Remove MCP server(s) from clients"
     method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
+    method_option :scope, type: :string, desc: "Claude scope (user|workspace)"
     def disintegrate(*names)
       if names.empty?
         say_error "No MCP names provided" and return 1
       end
       client = resolve_client(options[:client]) or return 1
+      if options[:client].to_s.downcase == 'claude' && options[:scope]
+        client = McpCli::Clients::Claude.new(scope: options[:scope])
+      end
       names.each do |n|
         removed = client.disintegrate(name: n)
         say "#{options[:client]}: remove #{n} (#{removed ? 'removed' : 'not present'})"
@@ -112,15 +120,17 @@ module McpCli
 
       codex = safe_list { McpCli::Clients::Codex.new.list }
       goose = safe_list { McpCli::Clients::Goose.new.list }
-      claude = safe_list { McpCli::Clients::Claude.new.list }
+      claude_scopes = safe_list { McpCli::Clients::Claude.new.list_scopes }
+      claude_user = Array(claude_scopes[:user])
+      claude_ws = Array(claude_scopes[:workspace])
 
-      names = (curated_names + codex + goose + claude).uniq.sort
+      names = (curated_names + codex + goose + claude_user + claude_ws).uniq.sort
 
       rows = []
       rows << ["MCP", "Installed", "Claude", "Codex", "Goose", "Description"]
       names.each do |n|
-        installed = installed_marker(n, codex, goose, claude)
-        rows << [n, installed, mark(claude.include?(n)), mark(codex.include?(n)), mark(goose.include?(n)), desc_map[n] || ""]
+        installed = installed_marker(n, codex, goose, claude_user + claude_ws)
+        rows << [n, installed, mark_claude(n, claude_user, claude_ws), mark_global(codex.include?(n)), mark_global(goose.include?(n)), desc_map[n] || ""]
       end
       print_table(rows, indent: 2)
     end
@@ -183,6 +193,17 @@ module McpCli
         yield
       rescue StandardError
         []
+      end
+
+      def mark_claude(name, user_list, ws_list)
+        return 'X' if user_list.include?(name)
+        return 'x' if ws_list.include?(name)
+        '—'
+      end
+
+      # Global-only clients (Codex, Goose) render uppercase X
+      def mark_global(bool)
+        bool ? 'X' : '—'
       end
     end
   end

@@ -19,17 +19,21 @@ module McpCli
         @scope = scope
       end
 
-      def list
-        out, _ = run_capture('claude', 'mcp', 'list')
-        names = []
-        (out || '').each_line do |line|
-          line = line.strip
-          next if line.empty?
-          if (m = line.match(/^([A-Za-z0-9-]+):/))
-            names << m[1]
-          end
-        end
-        names
+      # List MCPs. If scope provided ('user' or 'workspace'), pass through
+      # to Claude CLI; otherwise list across both scopes.
+      def list(scope: nil)
+        args = ['claude', 'mcp', 'list']
+        args += ['--scope', scope] if scope
+        out, _ = run_capture(*args)
+        parse_list(out)
+      end
+
+      # Return { user: [...], workspace: [...] }
+      def list_scopes
+        {
+          user: list(scope: 'user'),
+          workspace: list(scope: 'workspace')
+        }
       end
 
       # Accepts same shape as Codex adapter for consistency
@@ -86,6 +90,19 @@ module McpCli
       def run_capture(*cmd)
         out, err, st = Open3.capture3(*cmd)
         [st.success? ? out : nil, st.success? ? nil : err]
+      end
+
+      def parse_list(out)
+        names = []
+        (out || '').each_line do |line|
+          line = line.strip
+          next if line.empty? || line.start_with?('Checking')
+          # Expect lines like: "name: <cmd> - ✓ Connected"
+          if (m = line.match(/^([A-Za-z0-9_-]+):/))
+            names << m[1]
+          end
+        end
+        names
       end
 
       def blank?(s)
