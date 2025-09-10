@@ -23,17 +23,21 @@ module McpCli
       # to Claude CLI; otherwise list across both scopes.
       def list(scope: nil)
         args = ['claude', 'mcp', 'list']
-        args += ['--scope', scope] if scope
+        args << "--scope=#{scope}" if scope
         out, _ = run_capture(*args)
         parse_list(out)
       end
 
       # Return { user: [...], workspace: [...] }
       def list_scopes
-        {
-          user: list(scope: 'user'),
-          workspace: list(scope: 'workspace')
-        }
+        user = list(scope: 'user')
+        ws = list(scope: 'workspace')
+        if user.empty? && ws.empty?
+          combined = list
+          { user: combined, workspace: [] }
+        else
+          { user: user, workspace: ws }
+        end
       end
 
       # Accepts same shape as Codex adapter for consistency
@@ -48,13 +52,18 @@ module McpCli
         cmd = ['claude', 'mcp', 'add', spec[:name]]
         cmd += ['--scope', @scope] if @scope
 
-        Array(spec[:env_keys]).each do |k|
+        requested_keys = Array(spec[:env_keys])
+        present = []
+        requested_keys.each do |k|
           val = ENV[k]
           if val && !val.empty?
             cmd += ['-e', "#{k}=#{val}"]
-          else
-            McpCli::Util::Log.warn("[claude] env '#{k}' is empty or not set; skipping")
+            present << k
           end
+        end
+        missing = requested_keys - present
+        unless missing.empty?
+          raise ArgumentError, "Missing required env for Claude: #{missing.join(', ')}. Export them and retry."
         end
 
         cmd << '--'

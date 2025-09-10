@@ -42,15 +42,17 @@ module McpCli
     method_option :profile, type: :string, desc: "Profile to use"
     method_option :command, type: :string, desc: "Command to start the MCP server"
     method_option :env_key, type: :array, banner: "KEY [KEY ...]", desc: "Env keys passed through to the server"
-    method_option :scope, type: :string, desc: "Claude scope (user|workspace)"
+    method_option :global, type: :boolean, aliases: ['-g'], desc: "Claude: integrate in global (user) scope (default)"
+    method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Claude: integrate in workspace scope (current dir)"
     def integrate(*names)
       if names.empty?
         say_error "No MCP names provided" and return 1
       end
 
       client = resolve_client(options[:client]) or return 1
-      if options[:client].to_s.downcase == 'claude' && options[:scope]
-        client = McpCli::Clients::Claude.new(scope: options[:scope])
+      scope = resolve_scope_flag(options)
+      if options[:client].to_s.downcase == 'claude'
+        client = McpCli::Clients::Claude.new(scope: scope)
       end
       cmd = options[:command]
       env_keys = Array(options[:env_key]).compact
@@ -90,14 +92,16 @@ module McpCli
 
     desc "disintegrate NAME...", "Remove MCP server(s) from clients"
     method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
-    method_option :scope, type: :string, desc: "Claude scope (user|workspace)"
+    method_option :global, type: :boolean, aliases: ['-g'], desc: "Claude: remove from global (user) scope (default)"
+    method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Claude: remove from workspace scope (current dir)"
     def disintegrate(*names)
       if names.empty?
         say_error "No MCP names provided" and return 1
       end
       client = resolve_client(options[:client]) or return 1
-      if options[:client].to_s.downcase == 'claude' && options[:scope]
-        client = McpCli::Clients::Claude.new(scope: options[:scope])
+      scope = resolve_scope_flag(options)
+      if options[:client].to_s.downcase == 'claude'
+        client = McpCli::Clients::Claude.new(scope: scope)
       end
       names.each do |n|
         removed = client.disintegrate(name: n)
@@ -112,6 +116,8 @@ module McpCli
     end
 
     desc "list", "List available MCP servers"
+    method_option :global, type: :boolean, aliases: ['-g'], desc: "Show only global (user) Claude scope"
+    method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Show only workspace Claude scope (current dir)"
     def list
       curated_source = McpCli::Registry::Sources::Curated.new
       curated_models = curated_source.models
@@ -124,13 +130,34 @@ module McpCli
       claude_user = Array(claude_scopes[:user])
       claude_ws = Array(claude_scopes[:workspace])
 
-      names = (curated_names + codex + goose + claude_user + claude_ws).uniq.sort
+      scope = resolve_scope_flag(options, default: 'both')
+      names = case scope
+              when 'user' then (curated_names + codex + goose + claude_user).uniq.sort
+              when 'workspace' then (curated_names + codex + goose + claude_ws).uniq.sort
+              else (curated_names + codex + goose + claude_user + claude_ws).uniq.sort
+              end
 
       rows = []
       rows << ["MCP", "Installed", "Claude", "Codex", "Goose", "Description"]
       names.each do |n|
         installed = installed_marker(n, codex, goose, claude_user + claude_ws)
-        rows << [n, installed, mark_claude(n, claude_user, claude_ws), mark_global(codex.include?(n)), mark_global(goose.include?(n)), desc_map[n] || ""]
+        claude_mark = case scope
+                      when 'workspace'
+                        claude_ws.include?(n) ? 'x' : '—'
+                      when 'user'
+                        claude_user.include?(n) ? 'X' : '—'
+                      else
+                        mark_claude(n, claude_user, claude_ws)
+                      end
+        codex_mark = case scope
+                     when 'workspace' then '—'
+                     else mark_global(codex.include?(n))
+                     end
+        goose_mark = case scope
+                     when 'workspace' then '—'
+                     else mark_global(goose.include?(n))
+                     end
+        rows << [n, installed, claude_mark, codex_mark, goose_mark, desc_map[n] || ""]
       end
       print_table(rows, indent: 2)
     end
@@ -153,6 +180,21 @@ module McpCli
     desc "profile SUBCOMMAND ...", "Manage profiles"
     subcommand "profile", ProfileCLI
     no_commands do
+      def resolve_scope_flag(opts, default: 'user')
+        g = opts[:global] ? 1 : 0
+        w = opts[:workspace] ? 1 : 0
+        if g + w > 1
+          say_error "--global and --workspace are mutually exclusive"
+          exit 1
+        end
+        if g == 1
+          'user'
+        elsif w == 1
+          'workspace'
+        else
+          default
+        end
+      end
       def resolve_client(name)
         case (name || '').downcase
         when 'codex'

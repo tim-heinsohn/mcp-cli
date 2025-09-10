@@ -48,14 +48,19 @@ module McpCli
 
         # Build env map from explicit env or from env_keys
         env_map = {}
-        if spec[:env].is_a?(Hash)
-          env_map.merge!(spec[:env])
-        end
-        Array(spec[:env_keys]).each do |k|
+        env_map.merge!(spec[:env]) if spec[:env].is_a?(Hash)
+        requested_keys = Array(spec[:env_keys])
+        present_keys = []
+        requested_keys.each do |k|
           val = ENV[k]
           if val && !val.empty?
             env_map[k] = val
+            present_keys << k
           end
+        end
+        missing = requested_keys - present_keys
+        if !missing.empty? && spec[:env].to_h.slice(*missing).empty?
+          raise ArgumentError, "Missing required env for Codex: #{missing.join(', ')}. Export them and retry."
         end
 
         upsert_server(spec[:name], command: bin, args: args, env: env_map)
