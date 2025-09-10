@@ -10,7 +10,7 @@ require_relative "registry/sources/curated"
 module McpCli
   class ProfileCLI < Thor
     desc "list", "List profiles"
-    def list
+    def list(*filter_names)
       puts "TODO: list profiles"
     end
 
@@ -38,7 +38,7 @@ module McpCli
     end
 
     desc "integrate NAME...", "Integrate MCP server(s) with clients (scope flags affect Claude only; Codex/Goose are global-only)"
-    method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
+    method_option :client, type: :string, desc: "Target client (claude|codex|goose|all)", default: "all"
     method_option :profile, type: :string, desc: "Profile to use"
     method_option :command, type: :string, desc: "Command to start the MCP server"
     method_option :env_key, type: :array, banner: "KEY [KEY ...]", desc: "Env keys passed through to the server"
@@ -49,63 +49,106 @@ module McpCli
         say_error "No MCP names provided" and return 1
       end
 
-      client = resolve_client(options[:client]) or return 1
       scope = resolve_scope_flag(options)
-      if options[:client].to_s.downcase == 'claude'
-        client = McpCli::Clients::Claude.new(scope: scope)
-      end
+      clients = if options[:client].to_s.downcase == 'all' or options[:client].to_s.strip.empty?
+                  %w[codex goose claude]
+                else
+                  [options[:client].to_s.downcase]
+                end
       cmd = options[:command]
       env_keys = Array(options[:env_key]).compact
       resolver = McpCli::Registry::Resolver.new(sources: [McpCli::Registry::Sources::Curated.new])
 
-      successes = []
       failures = []
       names.each do |n|
         begin
-          spec = nil
+          model = nil
+          spec_cmd = nil
           if cmd && !cmd.strip.empty?
-            spec = { name: n, command: cmd, env_keys: env_keys }
+            spec_cmd = { name: n, command: cmd, env_keys: env_keys }
           else
             model = resolver.resolve(n)
-            if model
-              spec = curated_spec_for(model, options[:client], extra_env: env_keys)
-            else
-              raise "No curated spec found for '#{n}' and no --command provided"
+            raise "No curated spec found for '#{n}' and no --command provided" unless model
+          end
+          clients.each do |client_name|
+            begin
+              spec_for = spec_cmd || curated_spec_for(model, client_name, extra_env: env_keys)
+              client_obj = case client_name
+                           when 'codex' then McpCli::Clients::Codex.new
+                           when 'goose' then McpCli::Clients::Goose.new
+                           when 'claude' then McpCli::Clients::Claude.new(scope: scope)
+                           else
+                             say_error "Unsupported client '#{client_name}'"; next
+                           end
+              changed = client_obj.integrate(server: spec_for)
+              action = (client_name == 'claude') ? 'add' : 'upsert'
+              say "#{client_name}: #{action} #{n} (#{changed ? 'changed' : 'ok'})"
+            rescue => e
+              failures << "#{client_name}:#{n} -> #{e.message}"
+              say_error "#{client_name}: failed #{n}: #{e.message}"
             end
           end
-          changed = client.integrate(server: spec)
-          successes << [n, changed]
         rescue => e
-          failures << [n, e.message]
+          failures << "#{n} -> #{e.message}"
+          say_error "failed #{n}: #{e.message}"
         end
       end
-
-      successes.each do |(n, changed)|
-        say "#{options[:client]}: upsert #{n} (#{changed ? 'changed' : 'no-op'})"
-      end
-      failures.each do |(n, msg)|
-        say_error "#{options[:client]}: failed #{n}: #{msg}"
-      end
-
       failures.empty? ? 0 : 1
     end
 
     desc "disintegrate NAME...", "Remove MCP server(s) from clients (scope flags affect Claude only; Codex/Goose are global-only)"
-    method_option :client, type: :string, desc: "Target client (claude|codex|goose)", default: "codex"
+    method_option :client, type: :string, desc: "Target client (claude|codex|goose|all)", default: "all"
     method_option :global, type: :boolean, aliases: ['-g'], desc: "Claude: remove from global (user) scope (default)"
     method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Claude: remove from workspace scope (current dir)"
     def disintegrate(*names)
       if names.empty?
         say_error "No MCP names provided" and return 1
       end
-      client = resolve_client(options[:client]) or return 1
       scope = resolve_scope_flag(options)
-      if options[:client].to_s.downcase == 'claude'
-        client = McpCli::Clients::Claude.new(scope: scope)
-      end
+      clients = if options[:client].to_s.downcase == 'all' || options[:client].to_s.strip.empty?
+                  %w[claude codex goose]
+                else
+                  [options[:client].to_s.downcase]
+                end
       names.each do |n|
-        removed = client.disintegrate(name: n)
-        say "#{options[:client]}: remove #{n} (#{removed ? 'removed' : 'not present'})"
+        clients.each do |c|
+          case c
+          when 'claude'
+            if scope == 'workspace'
+              cu = McpCli::Clients::Claude.new(scope: 'workspace')
+              removed_ws = cu.disintegrate(name: n)
+              say "claude:workspace remove #{n} (#{removed_ws ? 'removed' : 'not present'})"
+            elsif scope == 'user'
+              cu = McpCli::Clients::Claude.new(scope: 'user')
+              removed_user = cu.disintegrate(name: n)
+              say "claude:global remove #{n} (#{removed_user ? 'removed' : 'not present'})"
+              # Fallback: try workspace if global not present
+              unless removed_user
+                cw = McpCli::Clients::Claude.new(scope: 'workspace')
+                removed_ws = cw.disintegrate(name: n)
+                say "claude:workspace remove #{n} (#{removed_ws ? 'removed' : 'not present'})"
+              end
+            else
+              # both (defensive)
+              cu = McpCli::Clients::Claude.new(scope: 'user')
+              removed_user = cu.disintegrate(name: n)
+              say "claude:global remove #{n} (#{removed_user ? 'removed' : 'not present'})"
+              cw = McpCli::Clients::Claude.new(scope: 'workspace')
+              removed_ws = cw.disintegrate(name: n)
+              say "claude:workspace remove #{n} (#{removed_ws ? 'removed' : 'not present'})"
+            end
+          when 'codex'
+            cdx = McpCli::Clients::Codex.new
+            removed = cdx.disintegrate(name: n)
+            say "codex: remove #{n} (#{removed ? 'removed' : 'not present'})"
+          when 'goose'
+            gs = McpCli::Clients::Goose.new
+            removed = gs.disintegrate(name: n)
+            say "goose: remove #{n} (#{removed ? 'removed' : 'not present'})"
+          else
+            say_error "Unsupported client '#{c}'"
+          end
+        end
       end
       0
     end
@@ -118,7 +161,7 @@ module McpCli
     desc "list", "List available MCP servers (use -g/-w to filter Claude scope; Codex/Goose are global-only)"
     method_option :global, type: :boolean, aliases: ['-g'], desc: "Show only global (user) Claude scope"
     method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Show only workspace Claude scope (current dir)"
-    def list
+    def list(*filter_names)
       curated_source = McpCli::Registry::Sources::Curated.new
       curated_models = curated_source.models
       curated_names = curated_models.map(&:name)
@@ -131,11 +174,13 @@ module McpCli
       claude_ws = Array(claude_scopes[:workspace])
 
       scope = resolve_scope_flag(options, default: 'both')
-      names = case scope
+      names_all = case scope
               when 'user' then (curated_names + codex + goose + claude_user).uniq.sort
               when 'workspace' then (curated_names + codex + goose + claude_ws).uniq.sort
               else (curated_names + codex + goose + claude_user + claude_ws).uniq.sort
               end
+
+      names = (filter_names && !filter_names.empty?) ? (names_all & filter_names) : names_all
 
       rows = []
       rows << ["MCP", "Installed", "Claude", "Codex", "Goose", "Description"]

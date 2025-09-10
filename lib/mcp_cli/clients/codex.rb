@@ -63,6 +63,19 @@ module McpCli
           raise ArgumentError, "Missing required env for Codex: #{missing.join(', ')}. Export them and retry."
         end
 
+        # Default USER_AGENT if not provided; helps certain servers (e.g., AppSignal)
+        env_map['USER_AGENT'] ||= 'codex/0.33 (mcp; linux)'
+
+        # If invoking docker run, ensure we pass through env keys to the container
+        if bin == 'docker' && args.include?('run')
+          env_map.keys.each do |k|
+            next if args.each_cons(2).any? { |a,b| a == '-e' && b == k }
+            idx = args.rindex { |a| not a.start_with?('-') } || -1
+            args.insert(idx, k)
+            args.insert(idx, '-e')
+          end
+        end
+
         upsert_server(spec[:name], command: bin, args: args, env: env_map)
       end
 
