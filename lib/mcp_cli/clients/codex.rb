@@ -68,6 +68,13 @@ module McpCli
 
         # If invoking docker run, ensure we pass through env keys to the container
         if bin == 'docker' && args.include?('run')
+          # Ensure we always pull latest image during test/integration
+          unless args.include?('--pull=always')
+            run_idx = args.index('run')
+            insert_at = run_idx ? run_idx + 1 : 0
+            args.insert(insert_at, '--pull=always')
+          end
+          # Ensure container sees all envs
           env_map.keys.each do |k|
             next if args.each_cons(2).any? { |a,b| a == '-e' && b == k }
             idx = args.rindex { |a| not a.start_with?('-') } || -1

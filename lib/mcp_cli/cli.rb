@@ -158,7 +158,7 @@ module McpCli
       puts "TODO: uninstall #{names.join(', ')}"
     end
 
-    desc "list", "List available MCP servers (use -g/-w to filter Claude scope; Codex/Goose are global-only)"
+    desc "list [MCP ...]", "List available MCP servers (optionally filter by MCP names; use -g/-w to filter Claude scope; Codex/Goose are global-only)"
     method_option :global, type: :boolean, aliases: ['-g'], desc: "Show only global (user) Claude scope"
     method_option :workspace, type: :boolean, aliases: ['-w'], desc: "Show only workspace Claude scope (current dir)"
     def list(*filter_names)
