@@ -1,0 +1,24 @@
+PATH
+  remote: .
+  specs:
+    mcp_cli (0.1.0)
+      thor (~> 1.2)
+      toml-rb (~> 2.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    citrus (3.0.2)
+    thor (1.4.0)
+    toml-rb (2.2.0)
+      citrus (~> 3.0, > 3.0)
+
+PLATFORMS
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  mcp_cli!
+
+BUNDLED WITH
+   2.6.7

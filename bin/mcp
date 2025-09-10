@@ -1,6 +1,30 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require_relative "../lib/mcp_cli"
+begin
+  require_relative "../lib/mcp_cli"
+  McpCli::CLI.start
+rescue LoadError => e
+  # Fallback help if Thor is not available yet
+  if e.message.include?("thor")
+    $stderr.puts "[warn] Thor gem not found; showing minimal usage."
+    puts <<~USAGE
+      MCP CLI (Ruby) — minimal usage
 
-McpCli::CLI.start
+      Commands:
+        mcp install NAME...
+        mcp update [NAME...]
+        mcp integrate NAME... [--client=claude|codex|goose] [--profile=NAME]
+        mcp disintegrate NAME... [--client=claude|codex|goose]
+        mcp uninstall NAME...
+        mcp list
+        mcp info NAME
+        mcp prompt NAME
+        mcp search QUERY...
+        mcp profile list|use NAME|create NAME [--env KEY=VAL]
+    USAGE
+    exit 0
+  else
+    raise
+  end
+end
