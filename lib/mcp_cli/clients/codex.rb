@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'fileutils'
+require 'shellwords'
 require_relative '../config/toml_config'
 require_relative 'base_client'
 
@@ -10,9 +11,10 @@ module McpCli
     # - Manages ~/.codex/config.toml (or ~/.codex/mcp.toml fallback)
     # - Upserts/removes entries under [mcp_servers.<name>]
     # Structure example:
-    #   [mcp_servers.gmail]
-    #   command = "node ~/.gmail-mcp/dist/index.js"
-    #   env_keys = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+    #   [mcp_servers.appsignal]
+    #   command = "docker"
+    #   args = ["run","-i","--rm","-e","APPSIGNAL_API_KEY","appsignal/mcp"]
+    #   env = { APPSIGNAL_API_KEY = "..." }
     class Codex < BaseClient
       def initialize(config_path: nil)
         @config_path = config_path || default_config_path
@@ -27,8 +29,8 @@ module McpCli
       end
 
       # Integrate using a server spec or a simple tuple
-      # server: object responding to :name and :metadata (with 'command', 'env_keys')
-      # or Hash with keys :name, :command, :env_keys
+      # server: object responding to :name and :metadata (with 'command', 'env_keys'|'env'|'args')
+      # or Hash with keys :name, :command, :env_keys, :env, :args
       def integrate(server: nil, profile: nil, name: nil, command: nil, env_keys: [])
         spec = if server
                  normalize_server_spec(server)
@@ -38,7 +40,25 @@ module McpCli
 
         raise ArgumentError, 'name and command are required' if spec[:name].to_s.empty? || spec[:command].to_s.empty?
 
-        upsert_server(spec[:name], command: spec[:command], env_keys: spec[:env_keys] || [])
+        # Convert command string to binary + args for Codex schema
+        tokens = Shellwords.split(spec[:command])
+        raise ArgumentError, 'command must contain an executable' if tokens.empty?
+        bin = tokens.shift
+        args = tokens
+
+        # Build env map from explicit env or from env_keys
+        env_map = {}
+        if spec[:env].is_a?(Hash)
+          env_map.merge!(spec[:env])
+        end
+        Array(spec[:env_keys]).each do |k|
+          val = ENV[k]
+          if val && !val.empty?
+            env_map[k] = val
+          end
+        end
+
+        upsert_server(spec[:name], command: bin, args: args, env: env_map)
       end
 
       # Remove an MCP server by spec or by explicit name
@@ -52,28 +72,59 @@ module McpCli
         remove_server(server_name)
       end
 
-      # Explicit helpers
-      def upsert_server(name, command:, env_keys: [])
-        data = @config.read
-        data['mcp_servers'] ||= {}
-        servers = data['mcp_servers']
-        before = Marshal.dump(servers)
-
-        servers[name] ||= {}
-        servers[name]['command'] = command
-        servers[name]['env_keys'] = Array(env_keys)
-
-        changed = before != Marshal.dump(servers)
-        @config.write(data) if changed
-        changed
+      # Explicit helpers using text replacement to enforce inline env map format
+      def upsert_server(name, command:, args: [], env: {})
+        path = @config.path
+        FileUtils.mkdir_p(File.dirname(path))
+        current = File.exist?(path) ? File.read(path) : ""
+        block = format_block(name, command, args, env)
+        pattern = /^\[mcp_servers\.#{Regexp.escape(name)}\][\s\S]*?(?=^\[|\z)/m
+        if current.match?(pattern)
+          before = current.dup
+          updated = current.sub(pattern, block)
+          return false if updated == before
+          write_text_atomic(path, updated)
+          return true
+        else
+          sep = current.end_with?("\n") || current.empty? ? "" : "\n"
+          updated = current + sep + block + "\n"
+          write_text_atomic(path, updated)
+          return true
+        end
       end
 
       def remove_server(name)
-        data = @config.read
-        return false unless data.dig('mcp_servers', name)
-        data['mcp_servers'].delete(name)
-        @config.write(data)
+        path = @config.path
+        return false unless File.exist?(path)
+        current = File.read(path)
+        pattern = /^\[mcp_servers\.#{Regexp.escape(name)}\][\s\S]*?(?=^\[|\z)/m
+        return false unless current.match?(pattern)
+        updated = current.sub(pattern, "")
+        write_text_atomic(path, updated)
         true
+      end
+
+      def format_block(name, command, args, env)
+        b = []
+        b << "[mcp_servers.#{name}]"
+        b << %(command = #{command.to_s.inspect})
+        unless Array(args).empty?
+          arr = Array(args).map { |a| a.to_s.inspect }.join(', ')
+          b << %(args = [#{arr}])
+        end
+        unless env.nil? || env.empty?
+          # stable key ordering
+          pairs = env.keys.sort.map { |k| %(#{k} = #{env[k].to_s.inspect}) }
+          b << %(env = { #{pairs.join(', ')} })
+        end
+        b.join("\n")
+      end
+
+      def write_text_atomic(path, content)
+        tmp = path + ".tmp"
+        File.open(tmp, 'w', 0o600) { |f| f.write(content) }
+        FileUtils.mv(tmp, path)
+        File.chmod(0o600, path)
       end
 
       private
