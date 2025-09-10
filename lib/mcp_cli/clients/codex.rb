@@ -8,9 +8,9 @@ module McpCli
   module Clients
     # Codex MCP client adapter
     # - Manages ~/.codex/config.toml (or ~/.codex/mcp.toml fallback)
-    # - Upserts/removes entries under [mcp.servers.<name>]
+    # - Upserts/removes entries under [mcp_servers.<name>]
     # Structure example:
-    #   [mcp.servers.gmail]
+    #   [mcp_servers.gmail]
     #   command = "node ~/.gmail-mcp/dist/index.js"
     #   env_keys = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
     class Codex < BaseClient
@@ -19,10 +19,10 @@ module McpCli
         @config = McpCli::Config::TomlConfig.new(path: @config_path)
       end
 
-      # List configured servers (names under [mcp.servers])
+      # List configured servers (names under [mcp_servers])
       def list
         data = @config.read
-        servers = data.dig('mcp', 'servers') || {}
+        servers = data['mcp_servers'] || {}
         servers.keys
       end
 
@@ -55,9 +55,8 @@ module McpCli
       # Explicit helpers
       def upsert_server(name, command:, env_keys: [])
         data = @config.read
-        data['mcp'] ||= {}
-        data['mcp']['servers'] ||= {}
-        servers = data['mcp']['servers']
+        data['mcp_servers'] ||= {}
+        servers = data['mcp_servers']
         before = Marshal.dump(servers)
 
         servers[name] ||= {}
@@ -71,8 +70,8 @@ module McpCli
 
       def remove_server(name)
         data = @config.read
-        return false unless data.dig('mcp', 'servers', name)
-        data['mcp']['servers'].delete(name)
+        return false unless data.dig('mcp_servers', name)
+        data['mcp_servers'].delete(name)
         @config.write(data)
         true
       end
