@@ -36,10 +36,8 @@ module McpCli
         env_map = {}
         env_map.merge!(spec[:env]) if spec[:env].is_a?(Hash)
         requested_keys = Array(spec[:env_keys])
-        missing = requested_keys.select { |k| ENV[k].to_s.empty? and not env_map.key?(k) }
-        if missing:
-            import sys
-            print(f"Warning: Missing env for Codex: {' '.join(missing)}", file=sys.stderr)
+        missing = requested_keys.select { |k| ENV[k].to_s.empty? && !env_map.key?(k) }
+        $stderr.puts("Warning: Missing env for Codex: #{missing.join(', ')}") unless missing.empty?
 
         if bin == 'docker' && args.include?('run')
           image_name = args.last || ""
@@ -71,23 +69,22 @@ module McpCli
         raise ArgumentError, 'name is required' if server_name.to_s.empty?
         remove_server(server_name)
       end
-
       def upsert_server(name, command:, args: [], env: {})
         data = @config.read
         data['mcp_servers'] ||= {}
-        
-        new_server_config = {
-          'command' => command,
-          'args' => args,
-          'env' => env
-        }
-        
-        current_server_config = data['mcp_servers'][name]
-        return false if current_server_config == new_server_config
+
+        new_server_config = { 'command' => command }
+        new_server_config['args'] = args if args && !args.empty?
+        new_server_config['env']  = env  if env  && !env.empty?
+
+        current = (data['mcp_servers'][name] || {}).dup
+        current.delete('args') if current['args'].is_a?(Array) && current['args'].empty?
+        current.delete('env')  if current['env'].is_a?(Hash) && current['env'].empty?
+        return false if current == new_server_config
 
         data['mcp_servers'][name] = new_server_config
         @config.write(data)
-        return true
+        true
       end
 
       def remove_server(name)

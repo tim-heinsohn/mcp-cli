@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "thor"
+require "fileutils"
 require_relative "clients/codex"
 require_relative "clients/claude"
 require_relative "clients/goose"
@@ -9,6 +10,7 @@ require_relative "registry/sources/curated"
 
 module McpCli
   class ProfileCLI < Thor
+    # ... (rest of ProfileCLI is unchanged)
     desc "list", "List profiles"
     def list(*filter_names)
       puts "TODO: list profiles"
@@ -29,7 +31,14 @@ module McpCli
   class CLI < Thor
     desc "install NAME...", "Install MCP server(s)"
     def install(*names)
-      puts "TODO: install #{names.join(', ')}"
+      names.each do |name|
+        case name
+        when "appsignal"
+          install_appsignal
+        else
+          say_error "Installation logic for '#{name}' is not defined."
+        end
+      end
     end
 
     desc "update [NAME...]", "Update MCP server(s)"
@@ -37,6 +46,7 @@ module McpCli
       puts "TODO: update #{names.join(', ')} (all if none)"
     end
 
+    # ... (rest of the file is unchanged)
     desc "integrate NAME...", "Integrate MCP server(s) with clients (scope flags affect Claude only; Codex/Goose are global-only)"
     method_option :client, type: :string, desc: "Target client (claude|codex|goose|all)", default: "all"
     method_option :profile, type: :string, desc: "Profile to use"
@@ -224,7 +234,57 @@ module McpCli
 
     desc "profile SUBCOMMAND ...", "Manage profiles"
     subcommand "profile", ProfileCLI
+
     no_commands do
+      def install_appsignal
+        repo_url = "https://github.com/appsignal/mcp"
+        install_dir = "/srv/lib/appsignal-mcp"
+        FileUtils.mkdir_p(File.dirname(install_dir))
+
+        say "Installing appsignal MCP to #{install_dir}..."
+
+        if Dir.exist?(install_dir)
+          say "Directory exists, pulling latest changes..."
+          system("git", "-C", install_dir, "pull")
+        else
+          say "Cloning repository..."
+          system("git", "clone", repo_url, install_dir)
+        end
+
+        patch_target = File.join(install_dir, "src/index.ts")
+        if File.exist?(patch_target)
+          say "Applying patch to src/index.ts..."
+          content = File.read(patch_target)
+          
+          old_axios_config = 'headers: {\n    Authorization: `Bearer ${API_KEY}`,\n    "Content-Type": "application/json",\n  },'
+          new_axios_config = 'headers: {\n    Authorization: `Bearer ${API_KEY}`,
+    "User-Agent": process.env.USER_AGENT,
+    "Content-Type": "application/json",
+  },'
+
+          if content.include?(new_axios_config)
+            say "Already patched."
+          else
+            updated_content = content.sub(old_axios_config, new_axios_config)
+            File.write(patch_target, updated_content)
+            say "Patch applied."
+          end
+        else
+            say_error "Could not find #{patch_target} to patch."
+            return
+        end
+
+        say "Building local docker image (appsignal/mcp:local)..."
+        build_success = system("docker", "build", "--no-cache", "-t", "appsignal/mcp:local", install_dir)
+
+        if build_success
+            say "Docker image built successfully."
+            say "Run `mcp integrate appsignal` to activate it."
+        else
+            say_error "Docker build failed."
+        end
+      end
+
       def resolve_scope_flag(opts, default: 'user')
         g = opts[:global] ? 1 : 0
         w = opts[:workspace] ? 1 : 0
