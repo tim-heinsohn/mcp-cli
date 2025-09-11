@@ -39,6 +39,37 @@ module McpCli
         merged
       end
 
+      def serialize(data)
+        if defined?(TomlRB)
+          TomlRB.dump(data)
+        else
+          dump_minimal(data)
+        end
+      end
+
+      private
+
+      def dump_minimal(data)
+        out = +""
+        servers = (data || {}).fetch('mcp_servers', {})
+        servers.each do |name, cfg|
+          out << "[mcp_servers.#{name}]\n"
+          if (cmd = cfg['command'] || cfg[:command])
+            out << %(command = #{cmd.to_s.inspect}\n)
+          end
+          if (args = cfg['args'] || cfg[:args]) && !args.empty?
+            arr = Array(args).map { |a| a.to_s.inspect }.join(', ')
+            out << %(args = [#{arr}]\n)
+          end
+          if (env = cfg['env'] || cfg[:env]) && !env.empty?
+            pairs = env.keys.sort.map { |k| %(#{k} = #{env[k].to_s.inspect}) }
+            out << %(env = { #{pairs.join(', ')} }\n)
+          end
+          out << "\n"
+        end
+        out
+      end
+
       private
 
       # Minimal parser used when toml-rb is not available. Only extracts
