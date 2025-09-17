@@ -62,13 +62,23 @@ module McpCli
           end
         end
         missing = requested_keys - present
-        unless missing.empty?
-          raise ArgumentError, "Missing required env for Claude: #{missing.join(', ')}. Export them and retry."
+        # Allow optional secrets for certain servers (e.g. n8n)
+        if spec[:name].to_s == 'n8n'
+          optional = %w[N8N_API_KEY N8N_BASIC_AUTH_USER N8N_BASIC_AUTH_PASSWORD]
+          required_missing = missing - optional
+          unless required_missing.empty?
+            raise ArgumentError, "Missing required env for Claude: #{required_missing.join(', ')}. Export them and retry."
+          end
+        else
+          unless missing.empty?
+            raise ArgumentError, "Missing required env for Claude: #{missing.join(', ')}. Export them and retry."
+          end
         end
 
         cmd << '--'
         # Split command into args respecting simple quotes
-        cmd.concat(shellwords(spec[:command]))
+        tokens = shellwords(spec[:command]).map { |t| expand_path_token(t) }
+        cmd.concat(tokens)
 
         system(*cmd)
       end
@@ -108,7 +118,16 @@ module McpCli
         [st.success? ? out : nil, st.success? ? nil : err]
       end
 
-      def parse_list(out)
+      
+      def expand_path_token(str)
+        return str if str.nil? || str.empty?
+        s = str.dup
+        s = s.gsub(/\$HOME|\$\{HOME\}/, ENV["HOME"].to_s)
+        s = File.expand_path(s) if s.start_with?("~")
+        s
+      end
+
+def parse_list(out)
         names = []
         (out || '').each_line do |line|
           line = line.strip

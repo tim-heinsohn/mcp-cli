@@ -1,0 +1,12 @@
+name: n8n
+description: n8n workflow automation and node documentation
+clients:
+  codex:
+    command: node "$HOME/.n8n-mcp/dist/mcp/index.js"
+    env_keys: []
+  claude:
+    command: node "$HOME/.n8n-mcp/dist/mcp/index.js"
+    env_keys: ["N8N_HOST", "N8N_API_KEY", "N8N_BASIC_AUTH_USER", "N8N_BASIC_AUTH_PASSWORD"]
+  goose:
+    command: node "$HOME/.n8n-mcp/build/index.js"
+    env_keys: ["N8N_HOST"]

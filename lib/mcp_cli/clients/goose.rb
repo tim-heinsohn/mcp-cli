@@ -37,7 +37,9 @@ module McpCli
                end
         raise ArgumentError, 'name and command are required' if blank?(spec[:name]) || blank?(spec[:command])
 
-        bin, *args = shellwords(spec[:command])
+        tokens = shellwords(spec[:command]).map { |t| expand_path_token(t) }
+        bin = tokens.shift
+        args = tokens
         raise ArgumentError, 'command must have an executable' if blank?(bin)
 
         data = @config.read
@@ -91,6 +93,14 @@ module McpCli
         else
           raise ArgumentError, 'Unsupported server spec; provide Hash or object(name, metadata)'
         end
+      end
+
+      def expand_path_token(str)
+        return str if str.nil? || str.empty?
+        s = str.dup
+        s = s.gsub(/\$HOME|\$\{HOME\}/, ENV["HOME"].to_s)
+        s = File.expand_path(s) if s.start_with?("~")
+        s
       end
 
       def blank?(s)
