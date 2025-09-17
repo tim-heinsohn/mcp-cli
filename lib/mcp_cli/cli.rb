@@ -35,6 +35,8 @@ module McpCli
         case name
         when "appsignal"
           install_appsignal
+        when "n8n"
+          install_n8n
         else
           say_error "Installation logic for '#{name}' is not defined."
         end
@@ -285,6 +287,35 @@ module McpCli
         end
       end
 
+      def install_n8n
+        repo_url = "https://github.com/czlonkowski/n8n-mcp.git"
+        install_dir = File.expand_path("~/.n8n-mcp")
+
+        FileUtils.mkdir_p(install_dir)
+        say "Installing n8n MCP to #{install_dir}..."
+
+        if Dir.exist?(File.join(install_dir, ".git"))
+          say "Directory exists, pulling latest changes..."
+          system("git", "-C", install_dir, "pull") or raise "git pull failed"
+        else
+          say "Cloning repository..."
+          system("git", "clone", repo_url, install_dir) or raise "git clone failed"
+        end
+
+        Dir.chdir(install_dir) do
+          say "Installing dependencies (npm install)..."
+          system("npm", "install") or raise "npm install failed"
+
+          say "Building server (npm run build)..."
+          system("npm", "run", "build") or raise "npm run build failed"
+
+          say "Initializing node documentation (npm run rebuild)..."
+          system("npm", "run", "rebuild") or raise "npm run rebuild failed"
+        end
+
+        say "✅ n8n MCP Server installed successfully!"
+        say "Next: run 'mcp integrate n8n' to add it to your clients."
+      end
       def resolve_scope_flag(opts, default: 'user')
         g = opts[:global] ? 1 : 0
         w = opts[:workspace] ? 1 : 0
@@ -324,7 +355,13 @@ module McpCli
         raise "Curated spec missing for client '#{client_name}'" unless client_cfg
         cmd = client_cfg['command'] || client_cfg[:command]
         envs = Array(client_cfg['env_keys'] || client_cfg[:env_keys]) | Array(extra_env)
-        { name: model.name, command: cmd, env_keys: envs }
+        optional_envs = Array(client_cfg['optional_env_keys'] || client_cfg[:optional_env_keys])
+        {
+          name: model.name,
+          command: cmd,
+          env_keys: envs,
+          optional_env_keys: optional_envs
+        }
       end
 
       def mark(bool)

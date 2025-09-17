@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[%s] appsignal-mcp-wrapper: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >&2
+}
+
+DEFAULT_ENV_FILE="$HOME/mcp/.env"
+env_file="${APPSIGNAL_MCP_ENV_FILE:-$DEFAULT_ENV_FILE}"
+if [[ -f "$env_file" ]]; then
+  log "Loading overrides from $env_file."
+  # shellcheck disable=SC1090
+  set -a
+  source "$env_file"
+  set +a
+fi
+
+key="${APPSIGNAL_API_KEY:-}"
+if [[ -n "$key" ]]; then
+  log "Using APPSIGNAL_API_KEY from environment."
+else
+  helper_cmd="${APPSIGNAL_API_KEY_HELPER:-$HOME/bin/appsignal_api_key_helper}"
+  if [[ -z "$helper_cmd" ]]; then
+    log "APPSIGNAL_API_KEY not set and no APPSIGNAL_API_KEY_HELPER configured."
+    exit 1
+  fi
+  log "APPSIGNAL_API_KEY not set; running helper '$helper_cmd'."
+  if helper_output=$(bash -lc "$helper_cmd" 2> >(while IFS= read -r line; do log "helper: $line"; done)); then
+    helper_output=$(printf '%s' "$helper_output" | tr -d '\r')
+    helper_output=${helper_output%%$'\n'*}
+    if [[ -z "$helper_output" ]]; then
+      log "Helper produced empty output."
+      exit 1
+    fi
+    key="$helper_output"
+    log "Loaded APPSIGNAL_API_KEY via helper."
+  else
+    status=$?
+    log "Helper command failed (exit ${status})."
+    exit $status
+  fi
+fi
+
+export APPSIGNAL_API_KEY="$key"
+
+user_agent=${USER_AGENT:-codex-mcp-wrapper}
+if [[ -z "${USER_AGENT:-}" ]]; then
+  log "USER_AGENT not provided; using fallback '${user_agent}'."
+fi
+export USER_AGENT="$user_agent"
+
+log "Starting appsignal/mcp container (docker run --pull=always)."
+exec docker run --pull=always -i --rm \
+  -e APPSIGNAL_API_KEY \
+  -e USER_AGENT \
+  appsignal/mcp "$@"

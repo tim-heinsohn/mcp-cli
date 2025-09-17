@@ -2,11 +2,12 @@ name: appsignal
 description: apm, metrics
 clients:
   codex:
-    command: docker run -i --rm -e APPSIGNAL_API_KEY -e USER_AGENT appsignal/mcp:local
-    env_keys: ["APPSIGNAL_API_KEY", "USER_AGENT"]
+    command: ~/mcp/bin/appsignal-mcp-wrapper
+    env_keys: ["APPSIGNAL_API_KEY"]
+    optional_env_keys: ["USER_AGENT"]
   claude:
-    command: docker run -i --rm -e APPSIGNAL_API_KEY -e USER_AGENT appsignal/mcp:local
+    command: docker run -i --rm -e APPSIGNAL_API_KEY -e USER_AGENT appsignal/mcp
     env_keys: ["APPSIGNAL_API_KEY", "USER_AGENT"]
   goose:
-    command: docker run -i --rm -e APPSIGNAL_API_KEY -e USER_AGENT appsignal/mcp:local
+    command: docker run -i --rm -e APPSIGNAL_API_KEY -e USER_AGENT appsignal/mcp
     env_keys: ["APPSIGNAL_API_KEY", "USER_AGENT"]

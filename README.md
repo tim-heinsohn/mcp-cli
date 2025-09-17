@@ -36,3 +36,29 @@ Exercise an MCP server outside Goose/Claude to isolate issues.
   - Simple tool invocation returns quickly with JSON or a clear error.
 
 Tip: Use the official image `appsignal/mcp`; no local tag is required.
+
+## AppSignal API Key Helpers
+
+The Codex integration ships with `~/mcp/bin/appsignal-mcp-wrapper`, which
+
+1. Loads `~/mcp/.env` (copy `~/mcp/.env.sample`) to pick up per-user settings.
+2. Accepts an `APPSIGNAL_API_KEY` if Codex forwards one untouched.
+3. Otherwise runs `APPSIGNAL_API_KEY_HELPER` (defaults to
+   `~/bin/appsignal_api_key_helper`). The helper just needs to print the key on
+   stdout, so you can wrap gopass, 1Password, credentials from your password
+   manager, etc.
+
+Every step is logged to `~/.codex/log/codex-tui.log`; look for
+`appsignal-mcp-wrapper:` lines when debugging timeouts. The `.env` file is
+git-ignored so each developer can customise their helper and secret path.
+
+## n8n MCP
+
+- Integrate: `mcp integrate n8n` (or target a client: `--client=codex|goose|claude`).
+- Inspector: `npx @modelcontextprotocol/inspector --command node --args "$HOME/.n8n-mcp/build/index.js"`.
+- Optional env: export `N8N_HOST`, `N8N_API_KEY`, `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` if your server requires auth.
+
+
+### Install n8n MCP server
+- Install: `mcp install n8n`
+- Integrate: `mcp integrate n8n`
