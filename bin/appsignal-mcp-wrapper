@@ -19,7 +19,7 @@ key="${APPSIGNAL_API_KEY:-}"
 if [[ -n "$key" ]]; then
   log "Using APPSIGNAL_API_KEY from environment."
 else
-  helper_cmd="${APPSIGNAL_API_KEY_HELPER:-$HOME/bin/appsignal_api_key_helper}"
+  helper_cmd="${APPSIGNAL_API_KEY_HELPER:-$HOME/ia.dotfiles/bin/appsignal_api_key_helper}"
   if [[ -z "$helper_cmd" ]]; then
     log "APPSIGNAL_API_KEY not set and no APPSIGNAL_API_KEY_HELPER configured."
     exit 1

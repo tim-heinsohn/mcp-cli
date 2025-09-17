@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[%s] n8n-mcp-wrapper: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >&2
+}
+
+DEFAULT_ENV_FILE="$HOME/mcp/.env"
+env_file="${N8N_MCP_ENV_FILE:-$DEFAULT_ENV_FILE}"
+if [[ -f "$env_file" ]]; then
+  log "Loading overrides from $env_file."
+  # shellcheck disable=SC1090
+  set -a
+  source "$env_file"
+  set +a
+fi
+
+required_vars=(N8N_API_URL N8N_API_KEY)
+optional_vars=(N8N_BASIC_AUTH_USER N8N_BASIC_AUTH_PASSWORD N8N_API_TIMEOUT N8N_API_PATH)
+
+missing=()
+for var in "${required_vars[@]}"; do
+  if [[ -z ${!var:-} ]]; then
+    missing+=("$var")
+  fi
+ done
+
+if (( ${#missing[@]} > 0 )); then
+  helper_cmd="${N8N_API_ENV_HELPER:-$HOME/ia.dotfiles/bin/n8n_api_env_helper}"
+  if [[ -z "$helper_cmd" ]]; then
+    log "Missing ${missing[*]} and no N8N_API_ENV_HELPER configured."
+    exit 1
+  fi
+  log "Missing ${missing[*]}; running helper '$helper_cmd'."
+  if helper_output=$(bash -lc "$helper_cmd" 2> >(while IFS= read -r line; do log "helper: $line"; done)); then
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      if [[ "$line" != *=* ]]; then
+        log "Ignoring helper line without '=': $line"
+        continue
+      fi
+      key=${line%%=*}
+      value=${line#*=}
+      export "$key"="$value"
+    done <<<"$helper_output"
+  else
+    status=$?
+    log "Helper command failed (exit ${status})."
+    exit $status
+  fi
+fi
+
+missing=()
+for var in "${required_vars[@]}"; do
+  if [[ -z ${!var:-} ]]; then
+    missing+=("$var")
+  fi
+ done
+
+if (( ${#missing[@]} > 0 )); then
+  log "Still missing required env: ${missing[*]}"
+  exit 1
+fi
+
+for var in "${optional_vars[@]}"; do
+  if [[ -n ${!var:-} ]]; then
+    export "$var"
+  fi
+ done
+
+n8n_entrypoint="${N8N_MCP_ENTRYPOINT:-$HOME/.n8n-mcp/dist/mcp/index.js}"
+if [[ ! -e "$n8n_entrypoint" ]]; then
+  log "Entrypoint '$n8n_entrypoint' not found."
+  exit 1
+fi
+
+log "Starting n8n MCP (node $n8n_entrypoint)."
+exec node "$n8n_entrypoint" "$@"

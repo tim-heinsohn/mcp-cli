@@ -44,13 +44,23 @@ The Codex integration ships with `~/mcp/bin/appsignal-mcp-wrapper`, which
 1. Loads `~/mcp/.env` (copy `~/mcp/.env.sample`) to pick up per-user settings.
 2. Accepts an `APPSIGNAL_API_KEY` if Codex forwards one untouched.
 3. Otherwise runs `APPSIGNAL_API_KEY_HELPER` (defaults to
-   `~/bin/appsignal_api_key_helper`). The helper just needs to print the key on
+   `~/ia.dotfiles/bin/appsignal_api_key_helper`). The helper just needs to print the key on
    stdout, so you can wrap gopass, 1Password, credentials from your password
    manager, etc.
 
 Every step is logged to `~/.codex/log/codex-tui.log`; look for
 `appsignal-mcp-wrapper:` lines when debugging timeouts. The `.env` file is
 git-ignored so each developer can customise their helper and secret path.
+
+## n8n API Env Helpers
+
+`~/mcp/bin/n8n-mcp-wrapper` follows the same pattern: it sources `~/mcp/.env`,
+checks for `N8N_API_URL`/`N8N_API_KEY`, and if missing invokes
+`N8N_API_ENV_HELPER` (defaults to `~/ia.dotfiles/bin/n8n_api_env_helper`). The
+helper prints `KEY=VALUE` lines which the wrapper exports before launching the
+MCP entrypoint (`~/.n8n-mcp/dist/mcp/index.js`). Optional extras such as
+`N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD`, `N8N_API_TIMEOUT`, and
+`N8N_API_PATH` are also forwarded when available.
 
 ## n8n MCP
 

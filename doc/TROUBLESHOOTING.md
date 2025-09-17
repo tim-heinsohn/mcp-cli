@@ -33,3 +33,18 @@ After setting either workaround, restart Codex; the AppSignal MCP should respond
 Check the log for entries like `appsignal-mcp-wrapper: Loaded APPSIGNAL_API_KEY via helper.` to confirm the secret flow. If the helper fails or produces no output, the wrapper exits so Codex surfaces the failure instead of hanging on initialize.
 
 These checks confirm whether the sandbox is still blocking `/var/run/docker.sock`, whether Docker launches at all, and whether the Codex client is ignoring the MCP handshake even when the container responds.
+
+### n8n MCP missing API credentials
+
+Codex launches n8n via `~/mcp/bin/n8n-mcp-wrapper`. It expects
+`N8N_API_URL` and `N8N_API_KEY` (plus optional auth extras) to be available in
+the sanitized environment. When either is missing the wrapper invokes
+`N8N_API_ENV_HELPER` (defaults to `~/ia.dotfiles/bin/n8n_api_env_helper`), which
+should print `KEY=VALUE` lines for every credential. Verify that `~/mcp/.env`
+points to the correct helper and that running it manually produces the full
+env block. Wrapper logs like `n8n-mcp-wrapper: Missing N8N_API_URL; running
+helper ...` show up in `~/.codex/log/codex-tui.log` and confirm whether the
+values were exported before `node ~/.n8n-mcp/dist/mcp/index.js` starts. If the
+helper exits non-zero or omits required keys, the wrapper aborts so Codex
+surfaces the configuration error quickly instead of returning empty tool
+responses.
